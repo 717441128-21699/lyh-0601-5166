@@ -5,6 +5,22 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+export interface QueryParams {
+  [key: string]: string | number | boolean | undefined;
+}
+
+const buildQueryString = (params?: QueryParams): string => {
+  if (!params) return '';
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      searchParams.append(key, String(value));
+    }
+  });
+  const queryString = searchParams.toString();
+  return queryString ? `?${queryString}` : '';
+};
+
 export async function apiFetch<T>(
   url: string,
   options: RequestInit = {}
@@ -26,7 +42,8 @@ export async function apiFetch<T>(
 }
 
 export const api = {
-  get: <T>(url: string) => apiFetch<T>(url, { method: 'GET' }),
+  get: <T>(url: string, params?: QueryParams) => 
+    apiFetch<T>(`${url}${buildQueryString(params)}`, { method: 'GET' }),
   post: <T>(url: string, body?: unknown) =>
     apiFetch<T>(url, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(url: string, body?: unknown) =>

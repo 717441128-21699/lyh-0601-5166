@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CreditCard, DollarSign, TrendingUp, AlertTriangle, CheckCircle2, Clock, Calendar, Search, Filter } from 'lucide-react';
 import { api } from '@/utils/api';
 import { formatCurrency, formatDate, getStatusLabel } from '@/utils/format';
+import { useAppStore } from '@/store';
 import type { Payment } from '../../shared/types';
 
 const typeConfig = {
@@ -15,15 +16,21 @@ export default function Finance() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const { currentUser } = useAppStore();
 
   useEffect(() => {
     fetchPayments();
-  }, [statusFilter]);
+  }, [statusFilter, currentUser]);
 
   const fetchPayments = async () => {
     try {
-      const params = statusFilter ? `?status=${statusFilter}` : '';
-      const data = await api.get<Payment[]>(`/api/finance/payments${params}`);
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      if (currentUser?.role === 'owner') {
+        params.append('ownerId', currentUser.id);
+      }
+      const queryString = params.toString();
+      const data = await api.get<Payment[]>(`/api/finance/payments${queryString ? `?${queryString}` : ''}`);
       setPayments(data);
     } catch (error) {
       console.error(error);

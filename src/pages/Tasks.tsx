@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ListTodo, User, Calendar, QrCode, Star, CheckCircle2, Clock, PlayCircle, AlertCircle, Search } from 'lucide-react';
 import { api } from '@/utils/api';
 import { formatDate, getStatusLabel } from '@/utils/format';
+import { useAppStore } from '@/store';
 import type { Task } from '../../shared/types';
 
 const statusConfig = {
@@ -19,15 +20,21 @@ export default function Tasks() {
   const [showAcceptModal, setShowAcceptModal] = useState<Task | null>(null);
   const [acceptScore, setAcceptScore] = useState(5);
   const [acceptComment, setAcceptComment] = useState('');
+  const { currentUser } = useAppStore();
 
   useEffect(() => {
     fetchTasks();
-  }, [statusFilter]);
+  }, [statusFilter, currentUser]);
 
   const fetchTasks = async () => {
     try {
-      const params = statusFilter ? `?status=${statusFilter}` : '';
-      const data = await api.get<Task[]>(`/api/tasks${params}`);
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      if (currentUser?.role === 'worker') {
+        params.append('workerId', currentUser.id);
+      }
+      const queryString = params.toString();
+      const data = await api.get<Task[]>(`/api/tasks${queryString ? `?${queryString}` : ''}`);
       setTasks(data);
     } catch (error) {
       console.error(error);

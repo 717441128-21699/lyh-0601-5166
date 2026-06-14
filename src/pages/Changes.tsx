@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { GitPullRequest, Plus, Calendar, DollarSign, Clock, CheckCircle2, XCircle, User, Search, Filter } from 'lucide-react';
 import { api } from '@/utils/api';
 import { formatCurrency, formatDate, getStatusLabel } from '@/utils/format';
+import { useAppStore } from '@/store';
 import type { ChangeRequest } from '../../shared/types';
 
 export default function Changes() {
@@ -9,14 +10,20 @@ export default function Changes() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newChange, setNewChange] = useState({ title: '', description: '', budgetImpact: 0, durationImpact: 0 });
+  const { currentUser } = useAppStore();
 
   useEffect(() => {
     fetchChanges();
-  }, []);
+  }, [currentUser]);
 
   const fetchChanges = async () => {
     try {
-      const data = await api.get<ChangeRequest[]>('/api/changes');
+      const params = new URLSearchParams();
+      if (currentUser?.role === 'owner') {
+        params.append('ownerId', currentUser.id);
+      }
+      const queryString = params.toString();
+      const data = await api.get<ChangeRequest[]>(`/api/changes${queryString ? `?${queryString}` : ''}`);
       setChanges(data);
     } catch (error) {
       console.error(error);
@@ -30,7 +37,7 @@ export default function Changes() {
       await api.post('/api/changes', {
         ...newChange,
         projectId: 'proj-1',
-        ownerId: 'user-001',
+        ownerId: currentUser?.id || 'user-001',
       });
       await fetchChanges();
       setShowCreateModal(false);

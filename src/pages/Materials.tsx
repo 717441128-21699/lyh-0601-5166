@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Package, AlertTriangle, CheckCircle2, Plus, Search, Filter, Ruler, DollarSign, Package as PackageIcon } from 'lucide-react';
+import { Package, AlertTriangle, CheckCircle2, Plus, Search, Filter, Ruler, DollarSign, Package as PackageIcon, X } from 'lucide-react';
 import { api } from '@/utils/api';
 import { formatCurrency, getStatusLabel } from '@/utils/format';
+import { useAppStore } from '@/store';
 import type { MaterialItem } from '../../shared/types';
 
 export default function Materials() {
@@ -9,6 +10,12 @@ export default function Materials() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialItem | null>(null);
+  const [purchaseQuantity, setPurchaseQuantity] = useState(0);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const { currentUser } = useAppStore();
 
   useEffect(() => {
     fetchMaterials();
@@ -23,6 +30,45 @@ export default function Materials() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenPurchaseModal = (material: MaterialItem) => {
+    const defaultQuantity = Math.max(material.safeStock - material.currentStock, 10);
+    setSelectedMaterial(material);
+    setPurchaseQuantity(defaultQuantity);
+    setShowPurchaseModal(true);
+  };
+
+  const handleClosePurchaseModal = () => {
+    setSelectedMaterial(null);
+    setShowPurchaseModal(false);
+    setPurchaseQuantity(0);
+  };
+
+  const handleSubmitPurchase = async () => {
+    if (!selectedMaterial || purchaseQuantity <= 0) return;
+    
+    setSubmitting(true);
+    try {
+      await api.post('/api/materials/purchase-orders', {
+        materialId: selectedMaterial.id,
+        materialName: selectedMaterial.name,
+        quantity: purchaseQuantity,
+        totalPrice: purchaseQuantity * selectedMaterial.unitPrice,
+        applicantId: currentUser?.id,
+        applicantName: currentUser?.name,
+      });
+      
+      setSuccessMessage(`${selectedMaterial.name} 采购申请已提交`);
+      handleClosePurchaseModal();
+      await fetchMaterials();
+      
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -177,7 +223,12 @@ export default function Materials() {
                 </td>
                 <td className="px-5 py-4 text-right">
                   {material.status !== 'normal' && (
-                    <button className="btn-primary text-sm py-1.5 px-3">申请采购</button>
+                    <button 
+                      className="btn-primary text-sm py-1.5 px-3"
+                      onClick={() => handleOpenPurchaseModal(material)}
+                    >
+                      申请采购
+                    </button>
                   )}
                 </td>
               </tr>
@@ -185,6 +236,107 @@ export default function Materials() {
           </tbody>
         </table>
       </div>
+
+      {successMessage && (
+        <div className="fixed top-6 right-6 z-50 animate-slide-up">
+          <div className="flex items-center gap-3 px-5 py-3 bg-green-50 border border-green-200 rounded-xl shadow-lg">
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 size={16} className="text-green-600" />
+            </div>
+            <span className="font-medium text-green-800">{successMessage}</span>
+          </div>
+        </div>
+      )}
+
+      {showPurchaseModal && selectedMaterial && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full animate-slide-up">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-slate-800">申请采购</h3>
+              <button
+                onClick={handleClosePurchaseModal}
+                className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-slate-50">
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">材料名称</p>
+                  <p className="font-semibold text-slate-800">{selectedMaterial.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">规格</p>
+                  <p className="font-semibold text-slate-800">{selectedMaterial.specification}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">当前库存</p>
+                  <p className="font-semibold text-slate-800 font-mono">
+                    {selectedMaterial.currentStock} {selectedMaterial.unit}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">需求数量</p>
+                  <p className="font-semibold text-slate-800 font-mono">
+                    {selectedMaterial.requiredQuantity} {selectedMaterial.unit}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  采购数量 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    value={purchaseQuantity}
+                    onChange={(e) => setPurchaseQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                    className="input-base flex-1"
+                    placeholder="请输入采购数量"
+                  />
+                  <span className="text-sm text-slate-500">{selectedMaterial.unit}</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  单价: {formatCurrency(selectedMaterial.unitPrice)}/{selectedMaterial.unit}
+                  {purchaseQuantity > 0 && (
+                    <span className="ml-3 font-medium text-primary-600">
+                      预计总价: {formatCurrency(purchaseQuantity * selectedMaterial.unitPrice)}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 btn-secondary"
+                onClick={handleClosePurchaseModal}
+                disabled={submitting}
+              >
+                取消
+              </button>
+              <button
+                className="flex-1 btn-primary"
+                onClick={handleSubmitPurchase}
+                disabled={submitting || purchaseQuantity <= 0}
+              >
+                {submitting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    提交中...
+                  </span>
+                ) : (
+                  '确认申请'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

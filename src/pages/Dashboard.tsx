@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   BarChart as ReBarChart,
   Bar,
@@ -16,7 +16,6 @@ import {
 import {
   FolderKanban,
   CheckCircle2,
-  Clock,
   AlertTriangle,
   Star,
   TrendingUp,
@@ -32,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { api } from '@/utils/api';
-import { formatCurrency, formatDate, getStatusLabel } from '@/utils/format';
+import { formatCurrency, getStatusLabel } from '@/utils/format';
 import type { DashboardSummary, ProjectStatus, MaterialItem } from '../../shared/types';
 
 const STATUS_COLORS: Record<ProjectStatus, string> = {
@@ -80,15 +79,26 @@ function StatCard({ icon: Icon, label, value, trend, color, delay = 0 }: StatCar
   );
 }
 
+const COMMUNITIES = ['翠湖天地', '阳光花园', '金色家园', '绿城玫瑰园', '保利中央公园', '万科城市花园'];
+const HOUSE_TYPES = ['三室两厅', '两室一厅', '四室两厅', '一室一厅', '复式楼'];
+
 export default function Dashboard() {
-  const { setDashboardData, dashboardData } = useAppStore();
+  const { setDashboardData } = useAppStore();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [communityFilter, setCommunityFilter] = useState<string>('');
+  const [houseTypeFilter, setHouseTypeFilter] = useState<string>('');
+  const [dateFilter, setDateFilter] = useState<string>('');
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const summary = await api.get<DashboardSummary>('/api/dashboard/summary');
+      const params = {
+        community: communityFilter || undefined,
+        houseType: houseTypeFilter || undefined,
+        date: dateFilter || undefined,
+      };
+      const summary = await api.get<DashboardSummary>('/api/dashboard/summary', params);
       setData(summary);
       setDashboardData(summary);
       setLastUpdate(new Date());
@@ -97,13 +107,13 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [communityFilter, houseTypeFilter, dateFilter, setDashboardData]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const pieData = data?.projectStatusDistribution
     .filter((d) => STATUS_ORDER.includes(d.status))
@@ -114,12 +124,18 @@ export default function Dashboard() {
     })) || [];
 
   const handleExport = () => {
-    api.get('/api/reports/monthly').then((report) => {
+    const params = {
+      community: communityFilter || undefined,
+      houseType: houseTypeFilter || undefined,
+      date: dateFilter || undefined,
+    };
+    api.get('/api/reports/monthly', params).then((report) => {
       const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `月度报告_${new Date().toISOString().slice(0, 7)}.json`;
+      const suffix = communityFilter || houseTypeFilter || dateFilter ? '_已筛选' : '';
+      a.download = `月度报告_${new Date().toISOString().slice(0, 7)}${suffix}.json`;
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -145,22 +161,42 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <select className="input-base w-auto text-sm">
-              <option>全部小区</option>
-              <option>翠湖天地</option>
-              <option>阳光花园</option>
-              <option>金色家园</option>
+            <select
+              className="input-base w-auto text-sm"
+              value={communityFilter}
+              onChange={(e) => setCommunityFilter(e.target.value)}
+            >
+              <option value="">全部小区</option>
+              {COMMUNITIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
-            <select className="input-base w-auto text-sm">
-              <option>全部户型</option>
-              <option>一室一厅</option>
-              <option>两室一厅</option>
-              <option>三室两厅</option>
+            <select
+              className="input-base w-auto text-sm"
+              value={houseTypeFilter}
+              onChange={(e) => setHouseTypeFilter(e.target.value)}
+            >
+              <option value="">全部户型</option>
+              {HOUSE_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
             </select>
-            <input type="date" className="input-base w-auto text-sm" />
-            <button className="btn-secondary flex items-center gap-2 text-sm">
+            <input
+              type="date"
+              className="input-base w-auto text-sm"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            />
+            <button
+              className="btn-secondary flex items-center gap-2 text-sm"
+              onClick={() => {
+                setCommunityFilter('');
+                setHouseTypeFilter('');
+                setDateFilter('');
+              }}
+            >
               <Filter size={16} />
-              筛选
+              重置筛选
             </button>
           </div>
           <button onClick={handleExport} className="btn-primary flex items-center gap-2 text-sm">

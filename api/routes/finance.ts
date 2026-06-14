@@ -1,13 +1,19 @@
 import { Router, type Request, type Response } from 'express';
-import { mockPayments } from '../../shared/mockData.js';
+import { mockPayments, mockProjects } from '../../shared/mockData.js';
 import type { Payment } from '../../shared/types.js';
 
 const router = Router();
 
 router.get('/payments', async (req: Request, res: Response): Promise<void> => {
-  const { projectId, status, type } = req.query;
+  const { projectId, status, type, ownerId } = req.query;
   let payments = [...mockPayments] as Payment[];
   
+  if (ownerId) {
+    const ownerProjectIds = new Set(
+      mockProjects.filter((p) => p.ownerId === ownerId).map((p) => p.id)
+    );
+    payments = payments.filter((p) => ownerProjectIds.has(p.projectId));
+  }
   if (projectId) {
     payments = payments.filter((p) => p.projectId === projectId);
   }

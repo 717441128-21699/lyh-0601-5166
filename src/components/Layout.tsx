@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   X,
   ChevronRight,
   LogOut,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { getRoleLabel } from '@/utils/format';
@@ -61,6 +62,14 @@ export default function Layout({ children }: LayoutProps) {
   if (!currentUser) return null;
 
   const visibleMenuItems = menuItems.filter((item) => item.roles.includes(currentUser.role));
+
+  const hasPermission = useMemo(() => {
+    const matchedItem = menuItems.find(
+      (item) => location.pathname === item.path || location.pathname.startsWith(item.path + '/')
+    );
+    if (!matchedItem) return true;
+    return matchedItem.roles.includes(currentUser.role);
+  }, [location.pathname, currentUser.role]);
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -145,7 +154,21 @@ export default function Layout({ children }: LayoutProps) {
         </header>
 
         <main className="flex-1 overflow-auto p-6 scrollbar-thin">
-          {children}
+          {hasPermission ? (
+            children
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
+                  <ShieldAlert size={40} className="text-red-500" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800 mb-2">无权限访问</h2>
+                <p className="text-sm text-slate-500">
+                  您当前角色（{getRoleLabel(currentUser.role)}）没有访问该页面的权限
+                </p>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

@@ -441,17 +441,49 @@ export const mockSystemSettings: SystemSettings = {
   materialSafetyStockRatio: 0.2,
 };
 
-export const generateDashboardSummary = (): DashboardSummary => {
+export interface DashboardFilters {
+  community?: string;
+  houseType?: string;
+  date?: string;
+}
+
+const filterByHouseInfo = <T extends { houseInfo: HouseInfo; createdAt: string }>(
+  items: T[],
+  filters?: DashboardFilters
+): T[] => {
+  return items.filter((item) => {
+    if (filters?.community && item.houseInfo.community !== filters.community) {
+      return false;
+    }
+    if (filters?.houseType && item.houseInfo.houseType !== filters.houseType) {
+      return false;
+    }
+    if (filters?.date) {
+      const itemDate = item.createdAt.split('T')[0];
+      if (itemDate !== filters.date) {
+        return false;
+      }
+    }
+    return true;
+  });
+};
+
+export const generateDashboardSummary = (filters?: DashboardFilters): DashboardSummary => {
+  const filteredApplications = filterByHouseInfo(mockApplications, filters);
+  const filteredProjects = filterByHouseInfo(mockProjects, filters);
+  const filteredProjectIds = new Set(filteredProjects.map((p) => p.id));
+  const filteredPayments = mockPayments.filter((p) => filteredProjectIds.has(p.projectId));
+
   const projectStatusDistribution = [
     { status: 'pending' as const, count: 0 },
-    { status: 'bidding' as const, count: mockApplications.filter((a) => a.status === 'bidding').length },
-    { status: 'signed' as const, count: mockProjects.filter((p) => p.status === 'signed').length },
-    { status: 'constructing' as const, count: mockProjects.filter((p) => p.status === 'constructing').length },
-    { status: 'accepting' as const, count: mockProjects.filter((p) => p.status === 'accepting').length },
-    { status: 'completed' as const, count: mockProjects.filter((p) => p.status === 'completed').length },
+    { status: 'bidding' as const, count: filteredApplications.filter((a) => a.status === 'bidding').length },
+    { status: 'signed' as const, count: filteredProjects.filter((p) => p.status === 'signed').length },
+    { status: 'constructing' as const, count: filteredProjects.filter((p) => p.status === 'constructing').length },
+    { status: 'accepting' as const, count: filteredProjects.filter((p) => p.status === 'accepting').length },
+    { status: 'completed' as const, count: filteredProjects.filter((p) => p.status === 'completed').length },
   ];
 
-  const allTasks = mockProjects.flatMap((p) => p.tasks);
+  const allTasks = filteredProjects.flatMap((p) => p.tasks);
   const completedTasksByWorker = workerNames.map((name, i) => {
     const workerId = `user-00${i + 2}`;
     const workerTasks = allTasks.filter((t) => t.assignedWorkerId === workerId);
@@ -473,7 +505,7 @@ export const generateDashboardSummary = (): DashboardSummary => {
     };
   });
 
-  const materialWarnings = mockProjects
+  const materialWarnings = filteredProjects
     .flatMap((p) => p.materials)
     .filter((m) => m.status !== 'normal')
     .slice(0, 8);
@@ -483,18 +515,39 @@ export const generateDashboardSummary = (): DashboardSummary => {
     ? Math.round((allAcceptedTasks.reduce((s, t) => s + (t.score || 0), 0) / allAcceptedTasks.length) * 10) / 10
     : 4.5;
 
+  const pendingApprovals = mockPurchaseOrders.filter((po) => {
+    const project = filteredProjects.find((p) =>
+      p.materials.some((m) => m.id === po.materialId)
+    );
+    return project ? ['pending', 'supervisor_approved'].includes(po.status) : false;
+  }).length;
+
   return {
-    totalProjects: mockProjects.length + mockApplications.filter((a) => a.status === 'bidding').length,
-    activeProjects: mockProjects.filter((p) => ['signed', 'constructing', 'accepting'].includes(p.status)).length,
-    completedProjects: mockProjects.filter((p) => p.status === 'completed').length,
-    totalRevenue: mockPayments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0),
+    totalProjects: filteredProjects.length + filteredApplications.filter((a) => a.status === 'bidding').length,
+    activeProjects: filteredProjects.filter((p) => ['signed', 'constructing', 'accepting'].includes(p.status)).length,
+    completedProjects: filteredProjects.filter((p) => p.status === 'completed').length,
+    totalRevenue: filteredPayments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0),
     materialsWarning: materialWarnings.filter((m) => m.status === 'shortage').length,
-    pendingApprovals: mockPurchaseOrders.filter((p) => p.status === 'pending' || p.status === 'supervisor_approved').length,
+    pendingApprovals,
     avgSatisfaction,
     projectStatusDistribution,
-    projects: mockProjects,
+    projects: filteredProjects,
     topWorkers: completedTasksByWorker,
     satisfactionTrend,
     materialWarnings,
+  };
+};
+
+export const getFilteredData = (filters?: DashboardFilters) => {
+  const filteredApplications = filterByHouseInfo(mockApplications, filters);
+  const filteredProjects = filterByHouseInfo(mockProjects, filters);
+  const filteredProjectIds = new Set(filteredProjects.map((p) => p.id));
+  const filteredPayments = mockPayments.filter((p) => filteredProjectIds.has(p.projectId));
+  const filteredChangeRequests = mockChangeRequests.filter((cr) => filteredProjectIds.has(cr.projectId));
+  return {
+    applications: filteredApplications,
+    projects: filteredProjects,
+    payments: filteredPayments,
+    changeRequests: filteredChangeRequests,
   };
 };

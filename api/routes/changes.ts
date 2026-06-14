@@ -5,9 +5,12 @@ import type { ChangeRequest } from '../../shared/types.js';
 const router = Router();
 
 router.get('/', async (req: Request, res: Response): Promise<void> => {
-  const { projectId, status } = req.query;
+  const { projectId, status, ownerId } = req.query;
   let changes = [...mockChangeRequests] as ChangeRequest[];
   
+  if (ownerId) {
+    changes = changes.filter((c) => c.ownerId === ownerId);
+  }
   if (projectId) {
     changes = changes.filter((c) => c.projectId === projectId);
   }

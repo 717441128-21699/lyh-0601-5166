@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FolderKanban, Building2, User, Briefcase, Calendar, DollarSign, ChevronRight, Search, Filter, Eye } from 'lucide-react';
 import { api } from '@/utils/api';
 import { formatCurrency, formatDate, getStatusLabel } from '@/utils/format';
+import { useAppStore } from '@/store';
 import type { Project } from '../../shared/types';
 
 export default function Projects() {
@@ -9,15 +10,23 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const { currentUser } = useAppStore();
 
   useEffect(() => {
     fetchProjects();
-  }, [statusFilter]);
+  }, [statusFilter, currentUser]);
 
   const fetchProjects = async () => {
     try {
-      const params = statusFilter ? `?status=${statusFilter}` : '';
-      const data = await api.get<Project[]>(`/api/projects${params}`);
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      if (currentUser?.role === 'owner') {
+        params.append('ownerId', currentUser.id);
+      } else if (currentUser?.role === 'supervisor') {
+        params.append('supervisorId', currentUser.id);
+      }
+      const queryString = params.toString();
+      const data = await api.get<Project[]>(`/api/projects${queryString ? `?${queryString}` : ''}`);
       setProjects(data);
     } catch (error) {
       console.error(error);
